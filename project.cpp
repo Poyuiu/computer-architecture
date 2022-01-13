@@ -108,16 +108,17 @@ int main(int argc, char *argv[])
     }
     used[start] = 1;
     // go
+    int last_choice = start;
     for (int sel = 1; sel < IndexingBitCount; sel++)
     {
         // update Qtable
         for (int i = 0; i < AddrBits - OffsetBitCount; i++)
             if (used[i] == 0)
-                Qtable[i] = Qtable[i] * Ctable[start][i];
+                Qtable[i] = Qtable[i] * Ctable[last_choice][i];
         // keep select
         maxQ = -1.0;
         int minbit;
-        for (int i = 0; i < AddrBits - OffsetBitCount; i++)
+        for (int i = AddrBits - OffsetBitCount; i >= 0; i--)
         {
             if (used[i] == 0 && Qtable[i] > maxQ)
             {
@@ -126,46 +127,37 @@ int main(int argc, char *argv[])
             }
         }
         used[minbit] = 1;
+        last_choice = minbit;
     }
-
-    // print
-    fout << "Offset bit count: " << OffsetBitCount << endl;
-    fout << "Indexing bit count: " << IndexingBitCount << endl;
-    fout << "Indexing bits:";
-    // use a greater set to store
+    // put into Set
     for (int i = AddrBits - OffsetBitCount - 1; i >= 0; i--)
     {
         if (used[i] == 1)
         {
             Set.insert(i);
-            fout << " " << i + OffsetBitCount;
         }
     }
-    fout << endl
-         << endl;
-
-    // below is the simulation of cache
+    // set LSB set;
+    set<int> LSB;
+    for (int i = 0; i < IndexingBitCount; i++)
+        LSB.insert(OffsetBitCount + i);
     string ID, Tag;
-    fout << Bench << " " << Testcase << endl;
-    int MissCount = 0;
+    int MissCount_LSB = 0, MissCount_ref = 0;
     multimap<string, string> MappingCache;
     multimap<string, string>::iterator iterMap, LRU;
     for (int i = 0; i < BenchCnt; i++)
     {
-        fout << ForOutPut[i] << " ";
         // reverse for convinience
         // note that tag and id will also reverse
         reverse(ForOutPut[i].begin(), ForOutPut[i].end());
         ID = Tag = "";
         for (int j = OffsetBitCount; j < AddrBits; j++)
         {
-            if (Set.count(j - OffsetBitCount))
+            if (LSB.count(j))
                 ID += ForOutPut[i][j];
             else
                 Tag += ForOutPut[i][j];
         }
-        // for debug
-        // fout << "ID: " << ID << " Tag: " << Tag << endl;
         int hit = 0;
         int count = MappingCache.count(ID);
         LRU = iterMap = MappingCache.find(ID);
@@ -175,18 +167,149 @@ int main(int argc, char *argv[])
                 hit = 1;
         }
         if (hit)
-            fout << "hit" << endl;
+        {
+        }
         else
         {
-            fout << "miss" << endl;
-            MissCount++;
+            MissCount_LSB++;
             if (count == Associativity)
                 MappingCache.erase(LRU);
             MappingCache.insert(pair<string, string>(ID, Tag));
         }
     }
-    fout << ".end" << endl;
-    fout << endl;
-    fout << "Total cache miss count: " << MissCount << endl;
+    MappingCache.clear();
+    for (int i = 0; i < BenchCnt; i++)
+    {
+        ID = Tag = "";
+        for (int j = OffsetBitCount; j < AddrBits; j++)
+        {
+            if (Set.count(j - OffsetBitCount))
+                ID += ForOutPut[i][j];
+            else
+                Tag += ForOutPut[i][j];
+        }
+        int hit = 0;
+        int count = MappingCache.count(ID);
+        LRU = iterMap = MappingCache.find(ID);
+        for (int j = 0; j < count; j++, iterMap++)
+        {
+            if (iterMap->second == Tag)
+                hit = 1;
+        }
+        if (hit)
+        {
+        }
+        else
+        {
+            MissCount_ref++;
+            if (count == Associativity)
+                MappingCache.erase(LRU);
+            MappingCache.insert(pair<string, string>(ID, Tag));
+        }
+    }
+    MappingCache.clear();
+    // print
+    fout << "Offset bit count: " << OffsetBitCount << endl;
+    fout << "Indexing bit count: " << IndexingBitCount << endl;
+    fout << "Indexing bits:";
+    // use a greater set to store
+    if (MissCount_LSB <= MissCount_ref)
+    {
+        for (int i = OffsetBitCount + IndexingBitCount - 1; i >= OffsetBitCount; i--)
+        {
+            fout << " " << i;
+        }
+        fout << endl
+             << endl;
+        fout << Bench << " " << Testcase << endl;
+        int MissCount = 0;
+        for (int i = 0; i < BenchCnt; i++)
+        {
+            reverse(ForOutPut[i].begin(), ForOutPut[i].end());
+            fout << ForOutPut[i] << " ";
+            // reverse for convinience
+            // note that tag and id will also reverse
+            reverse(ForOutPut[i].begin(), ForOutPut[i].end());
+            ID = Tag = "";
+            for (int j = OffsetBitCount; j < AddrBits; j++)
+            {
+                if (LSB.count(j))
+                    ID += ForOutPut[i][j];
+                else
+                    Tag += ForOutPut[i][j];
+            }
+            int hit = 0;
+            int count = MappingCache.count(ID);
+            LRU = iterMap = MappingCache.find(ID);
+            for (int j = 0; j < count; j++, iterMap++)
+            {
+                if (iterMap->second == Tag)
+                    hit = 1;
+            }
+            if (hit)
+                fout << "hit" << endl;
+            else
+            {
+                fout << "miss" << endl;
+                MissCount++;
+                if (count == Associativity)
+                    MappingCache.erase(LRU);
+                MappingCache.insert(pair<string, string>(ID, Tag));
+            }
+        }
+        fout << ".end" << endl;
+        fout << endl;
+        fout << "Total cache miss count: " << MissCount << endl;
+    }
+    else
+    {
+        for (set<int>::iterator iter_s = Set.begin(); iter_s != Set.end(); iter_s++)
+            fout << " " << *iter_s + OffsetBitCount;
+        fout << endl
+             << endl;
+        fout << Bench << " " << Testcase << endl;
+        int MissCount = 0;
+        multimap<string, string> MappingCache;
+        multimap<string, string>::iterator iterMap, LRU;
+        for (int i = 0; i < BenchCnt; i++)
+        {
+            reverse(ForOutPut[i].begin(), ForOutPut[i].end());
+            fout << ForOutPut[i] << " ";
+            // reverse for convinience
+            // note that tag and id will also reverse
+            reverse(ForOutPut[i].begin(), ForOutPut[i].end());
+            ID = Tag = "";
+            for (int j = OffsetBitCount; j < AddrBits; j++)
+            {
+                if (Set.count(j - OffsetBitCount))
+                    ID += ForOutPut[i][j];
+                else
+                    Tag += ForOutPut[i][j];
+            }
+            // for debug
+            // fout << "ID: " << ID << " Tag: " << Tag << endl;
+            int hit = 0;
+            int count = MappingCache.count(ID);
+            LRU = iterMap = MappingCache.find(ID);
+            for (int j = 0; j < count; j++, iterMap++)
+            {
+                if (iterMap->second == Tag)
+                    hit = 1;
+            }
+            if (hit)
+                fout << "hit" << endl;
+            else
+            {
+                fout << "miss" << endl;
+                MissCount++;
+                if (count == Associativity)
+                    MappingCache.erase(LRU);
+                MappingCache.insert(pair<string, string>(ID, Tag));
+            }
+        }
+        fout << ".end" << endl;
+        fout << endl;
+        fout << "Total cache miss count: " << MissCount << endl;
+    }
     return 0;
 }
